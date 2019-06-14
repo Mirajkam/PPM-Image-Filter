@@ -1,0 +1,12 @@
+CC=nvcc
+CFLAGS=-g -O3 -std=c++11 -Xcompiler
+
+#make the program
+hw4: hw4.cu ppmFile.c
+	nvcc hw4.cu -o hw4 -std=c++11 -Xcompiler -fopenmp
+
+#cleanup function
+clean:
+	rm hw4
+
+#-gencode arch=compute_20,code=sm_20

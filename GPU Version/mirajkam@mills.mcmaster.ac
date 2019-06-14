@@ -1,0 +1,102 @@
+#include "ppmFile.h"
+#include <cuda_runtime.h>
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
+
+__global__Image *HKernel(int imageW, int imageH, int r, Image *image);
+__device__Image *VKernel(int imageW, int imageH, int r, Image *image);
+
+int main(int argc, char *argv[]) {
+  int r = atoi(argv[1]);
+  Image *unfilterImage = ImageRead(argv[2]);
+
+  int imageH = ImageHeight(unfilterImage);
+  int imageW = ImageWidth(unfilterImage);
+  int *gpuImageW;
+  int *gpuImageH;
+  int *gpuR;
+  int size = imageH * imageW * sizeof(Image);
+  Image *newGpuImageV;
+  Image *newGpuImageH;
+  Image *oldGpuImage;
+  Image *newIm;
+
+  // allocating memory for the GPU
+  cudaMemcpy(oldGpuImage, unfilterImage, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(newGpuImageV, ImageCreate(imageW, imageH), size,
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(newGpuImageH, ImageCreate(imageW, imageH), size,
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(gpuImageW, &imageW, imageW * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(gpuImageH, &imageH, imageH * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(gpuR, &r, r * sizeof(int), cudaMemcpyHostToDevice);
+
+  HKernel << blocks,
+      threads >> (gpuImageW, gpuImageH, gpuR, unfilterImage, newGpuImageH);
+  // VKernel << blocks,
+  //threads >> (gpuImageW, gpuImageH, gpuR, newGpuImageH, newGpuImageV);
+  cudaDeviceSynchronize();
+  cudaMemcpy(newIm, newGpuImageH, size, cudaMemcpyDeviceToHost);
+  ImageWrite(newIm, argv[3]);
+}
+
+__global__ void HKernel(int *imageW, int *imageH, int *r, Image *image,
+                         Image *newImage) {
+
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  for (int i = index; i < (imageW * imageH); i += stride) {
+    // The x-edges of the screen
+    int x = i % imageW;
+    int left = ((x - r < 0) ? 0 : x - r);
+    int right = ((x + r >= imageW) ? imageW - 1 : x + r);
+    // getting count of pixels to divide by
+    int count = (right - left + 1);
+    int sumr = 0;
+    int sumg = 0;
+    int sumb = 0;
+
+    for (int cy = 0; cy <= imageH; cy++) {
+      for (int cx = left; cx <= right; cx++) {
+        sumr += ImageGetPixel(image, cx, cy, 0);
+        sumg += ImageGetPixel(image, cx, cy, 1);
+        sumb += ImageGetPixel(image, cx, cy, 2);
+      }
+      ImageSetPixel(newImage, x, cy, 0, sumr / count);
+      ImageSetPixel(newImage, x, cy, 1, sumg / count);
+      ImageSetPixel(newImage, x, cy, 2, sumb / count);
+    }
+  }
+}
+
+__device__ void VKernel(int *imageW, int *imageH, int *r, Image *image,
+                        Image *newImage) {
+
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  for (int i = index; i < (imageW * imageH); i += stride) {
+    // The x-edges of the screen
+    int y = i % imageH;
+    int top = ((y - r < 0) ? 0 : y - r);
+    int bottom = ((y + r >= imageH) ? imageH - 1 : y + r);
+    // getting count of pixels to divide by
+    int count = (bottom - top + 1);
+    int sumr = 0;
+    int sumg = 0;
+    int sumb = 0;
+
+    for (int cx = 0; cx <= imageW; cx++) {
+      for (int cy = top; cy <= bottom; cy++) {
+        sumr += ImageGetPixel(image, cx, cy, 0);
+        sumg += ImageGetPixel(image, cx, cy, 1);
+        sumb += ImageGetPixel(image, cx, cy, 2);
+      }
+      ImageSetPixel(image, cx, y, 0, sumr / count);
+      ImageSetPixel(image, cx, y, 1, sumg / count);
+      ImageSetPixel(image, cx, y, 2, sumb / count);
+    }
+  }
+}
