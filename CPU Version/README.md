@@ -1,9 +1,9 @@
 # PPM-Image-Filter
-Program that takes reads a PPM image and applies mean and median filter and then rewrites PPM image.
+Program that takes reads a PPM image and applies mean filter and then rewrites PPM image. (sobel filter available, need to change main method or add extra argument for different filters).
 
 Arguments:
- 1- in: the name of the input image file
- 2- r: the radius of the filter kernel
+ 1- r: the radius of the filter kernel
+ 2- in: the name of the input image file
  3- out: the name of the output image file 
  
- ./hw4 in r out
+ ./hw4 r in out
